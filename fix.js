@@ -85,8 +85,9 @@
   const sub = (a) =>
     a?.profile?.headline || a?.headline || a?.profile?.title || a?.title || a?.bio || "";
   const num = (o) => {
-    for (const k of ["points", "score", "xp", "total", "count", "posts"])
-      if (typeof o?.[k] === "number") return o[k];
+    const keys = ["points", "score", "xp", "total", "count", "posts", "postCount", "uses"];
+    for (const k of keys) if (typeof o?.[k] === "number") return o[k];
+    for (const k of keys) if (typeof o?._count?.[k] === "number") return o._count[k];
     return "";
   };
   const inits = (n) =>
@@ -175,6 +176,44 @@
       : h("span", { class: cls + " td-ini", text: inits(who(a)) });
   };
 
+  // Their media entries were never seen populated, so accept the usual field names
+  // and fall back to a plain link if the file will not render.
+  const mediaItem = (m) => {
+    const url =
+      typeof m === "string"
+        ? m
+        : m?.url || m?.src || m?.href || m?.path || m?.secureUrl || m?.downloadUrl || "";
+    if (!url) return null;
+    const kind = String(
+      m?.type || m?.mimeType || m?.mime || m?.kind || m?.resourceType || ""
+    ).toLowerCase();
+    if (kind.includes("video") || /\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/i.test(url))
+      return h("video", {
+        class: "td-mv",
+        src: url,
+        controls: "",
+        preload: "metadata",
+        playsinline: "",
+      });
+    if (kind.includes("audio") || /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(url))
+      return h("audio", { class: "td-ma", src: url, controls: "", preload: "metadata" });
+
+    const img = h("img", {
+      class: "td-mi",
+      src: url,
+      alt: m?.alt || m?.caption || "",
+      loading: "lazy",
+    });
+    const link = h("a", { href: url, target: "_blank", rel: "noreferrer noopener" }, img);
+    img.onerror = () => link.replaceChildren(h("span", { class: "td-mfail", text: url }));
+    return link;
+  };
+
+  const mediaBlock = (list) => {
+    const items = (Array.isArray(list) ? list : []).map(mediaItem).filter(Boolean);
+    return items.length ? h("div", { class: "td-media" }, items) : null;
+  };
+
   const chip = (p) =>
     h("div", { class: "td-chip" },
       face(p, true),
@@ -208,6 +247,7 @@
           style: "font-size:14.5px;margin-top:2px",
           text: body(r.body ?? r.content ?? r.text ?? ""),
         }),
+        mediaBlock(r.media || r.attachments),
         h("div", { class: "td-racts" },
           makeLike(
             [
@@ -260,6 +300,13 @@
     #td-rescue .td-meta{font-size:13px;color:#6b7280}
     #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere;
       white-space:pre-wrap}
+    #td-rescue .td-media{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+    #td-rescue .td-media a{display:block}
+    #td-rescue .td-mi,#td-rescue .td-mv{max-width:100%;height:auto;display:block;
+      border-radius:12px;border:1px solid #eaecef}
+    #td-rescue .td-mv{background:#000}
+    #td-rescue .td-ma{width:100%}
+    #td-rescue .td-mfail{display:block;font-size:13px;color:#6b7280;word-break:break-all}
     #td-rescue .td-acts{display:flex;align-items:center;gap:20px;color:#6b7280}
     #td-rescue .td-act{display:inline-flex;align-items:center;gap:7px;font-size:14px;
       background:none;border:0;padding:0;color:inherit;font-family:inherit;cursor:pointer}
@@ -429,6 +476,7 @@
             text: cap(post.author?.role) + " · " + rel(post.createdAt),
           }))),
       h("div", { class: "td-body", text: body(post.body) }),
+      mediaBlock(post.media || post.attachments),
       h("hr", { class: "td-rule" }),
       acts,
       h("div", { class: "td-compose" }, box, sendBtn),
