@@ -17,7 +17,7 @@
 
   const get = async (u) => {
     try {
-      const r = await fetch(u);
+      const r = await fetch(u, { credentials: "same-origin" });
       return r.ok ? await r.json() : null;
     } catch {
       return null;
@@ -30,6 +30,7 @@
     try {
       const r = await fetch(u, {
         method: method || "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
@@ -105,6 +106,52 @@
     }
     for (const c of kids.flat()) if (c || c === 0) n.append(c);
     return n;
+  };
+
+  // Phones have no tooltips, so anything we used to say through a title attribute
+  // has to be said on screen instead.
+  const toast = (msg) => {
+    document.getElementById("td-toast")?.remove();
+    const t = h("div", { id: "td-toast", class: "td-toast", text: msg });
+    (document.getElementById("td-rescue") || document.body).append(t);
+    setTimeout(() => t.remove(), 2400);
+  };
+
+  // iOS Safari refuses navigator.clipboard in some content-script contexts, so keep
+  // the old selection copy as a fallback. Both run inside the click, which is the
+  // user activation both APIs require.
+  const selectionCopy = (text) => {
+    try {
+      const ta = h("textarea", {
+        style: "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0",
+      });
+      ta.value = text;
+      ta.contentEditable = "true";
+      ta.readOnly = true;
+      document.body.append(ta);
+      const range = document.createRange();
+      range.selectNodeContents(ta);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      sel.removeAllRanges();
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const copyLink = async () => {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+      return;
+    } catch {}
+    toast(selectionCopy(url) ? "Link copied" : "Could not copy the link");
   };
 
   // Turn bare URLs in a body into real links. Returns a mix of strings and anchors,
@@ -186,6 +233,7 @@
         count = was.count;
         paint();
         btn.title = "Like failed: this build could not find the like endpoint";
+        toast("Could not like this: no working like endpoint.");
       }
     };
     return btn;
@@ -242,6 +290,7 @@
       if (!(await tryEach(urls, ["DELETE"], [undefined]))) {
         delBtn.disabled = false;
         delBtn.title = "Delete failed";
+        toast("Could not delete this " + what + ".");
         return;
       }
       await onDeleted();
@@ -366,9 +415,11 @@
       rows);
 
   const CSS = `
-    #td-rescue{position:fixed;inset:0;z-index:2147483647;background:#fff;overflow:auto;
+    #td-rescue{position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;
+      z-index:2147483647;background:#fff;overflow:auto;overscroll-behavior:contain;
+      -webkit-overflow-scrolling:touch;
       font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#111827;
-      -webkit-font-smoothing:antialiased}
+      -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
     #td-rescue *{box-sizing:border-box}
     #td-rescue .td-bar{display:flex;justify-content:space-between;align-items:center;
       gap:10px;padding:8px 20px;border-bottom:1px solid #eef0f2;font-size:12px;color:#9ca3af}
@@ -400,7 +451,7 @@
     #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere;
       white-space:pre-wrap}
     #td-rescue .td-link{color:#2563eb;text-decoration:none;overflow-wrap:anywhere}
-    #td-rescue .td-link:hover{text-decoration:underline}
+    @media (hover:hover){#td-rescue .td-link:hover{text-decoration:underline}}
     #td-rescue .td-media{display:grid;grid-template-columns:1fr;gap:10px;margin-top:14px}
     #td-rescue .td-media[data-n="2"]{grid-template-columns:1fr 1fr}
     #td-rescue .td-media[data-n="3"]{grid-template-columns:repeat(3,1fr)}
@@ -417,7 +468,7 @@
     #td-rescue .td-acts{display:flex;align-items:center;gap:20px;color:#6b7280}
     #td-rescue .td-act{display:inline-flex;align-items:center;gap:7px;font-size:14px;
       background:none;border:0;padding:0;color:inherit;font-family:inherit;cursor:pointer}
-    #td-rescue .td-act:hover{color:#111827}
+    @media (hover:hover){#td-rescue .td-act:hover{color:#111827}}
     #td-rescue .td-act.on{color:#111827}
     #td-rescue .td-act[disabled]{cursor:default;opacity:.55}
     #td-rescue .td-spacer{margin-left:auto}
@@ -428,7 +479,7 @@
     #td-rescue .td-racts .td-act{font-size:13px;gap:6px;color:#9ca3af}
     #td-rescue .td-txt{background:none;border:0;padding:0;font:inherit;font-size:13px;
       color:#6b7280;cursor:pointer}
-    #td-rescue .td-txt:hover{color:#111827;text-decoration:underline}
+    @media (hover:hover){#td-rescue .td-txt:hover{color:#111827;text-decoration:underline}}
     #td-rescue .td-txt[disabled]{opacity:.5;cursor:default;text-decoration:none}
     #td-rescue .td-edit{width:100%;border:1px solid #e5e7eb;border-radius:12px;
       padding:11px 15px;font:inherit;font-size:14.5px;min-height:84px;resize:vertical;
@@ -464,6 +515,53 @@
     #td-rescue .td-topic{display:flex;gap:10px;margin-bottom:14px}
     #td-rescue .td-topic .td-cnt{margin-left:auto;font-size:13px;color:#9ca3af;
       white-space:nowrap}
+    #td-rescue .td-toast{position:fixed;left:50%;transform:translateX(-50%);
+      bottom:calc(26px + env(safe-area-inset-bottom));background:#111827;color:#fff;
+      font-size:14px;line-height:1.35;padding:10px 16px;border-radius:14px;text-align:center;
+      max-width:calc(100% - 40px);box-shadow:0 8px 24px rgba(0,0,0,.22)}
+    /* Touch: thumb-sized controls, and 16px fields because iOS zooms the whole page
+       in on a smaller one and never zooms back out. Keyed off the pointer rather
+       than the width, so an iPad in portrait gets them too. */
+    @media (pointer:coarse){
+      #td-rescue .td-acts{gap:6px}
+      #td-rescue .td-act{min-height:44px;padding:0 8px;margin-left:-8px}
+      #td-rescue .td-racts{gap:4px;margin-top:2px}
+      #td-rescue .td-racts .td-act{min-height:40px;padding:0 6px}
+      #td-rescue .td-txt{min-height:40px;padding:0 6px}
+      #td-rescue .td-bar button{padding:7px 12px;min-height:36px}
+      #td-rescue .td-compose textarea,#td-rescue .td-edit{font-size:16px}
+    }
+    /* Tablets: the sidebar fits beside the post from about 900px, so trim the
+       column minimums rather than let an iPad in landscape stack like a phone. */
+    @media (min-width:641px) and (max-width:1100px){
+      #td-rescue .td-crumb,#td-rescue .td-wrap{padding-left:24px;padding-right:24px}
+      #td-rescue .td-wrap{gap:20px}
+      #td-rescue .td-main{flex:1 1 520px;min-width:300px}
+      #td-rescue .td-side{flex:0 1 280px;min-width:240px}
+      #td-rescue .td-card{padding:22px 24px}
+    }
+    /* Phones: one column, edge to edge, clear of the notch and the bottom toolbar. */
+    @media (max-width:640px){
+      #td-rescue .td-bar{padding:8px 14px}
+      #td-rescue .td-crumb{padding:14px 16px 0;
+        padding-left:calc(16px + env(safe-area-inset-left));
+        padding-right:calc(16px + env(safe-area-inset-right))}
+      #td-rescue .td-wrap{display:block;padding:14px 16px;
+        padding-left:calc(16px + env(safe-area-inset-left));
+        padding-right:calc(16px + env(safe-area-inset-right));
+        padding-bottom:calc(48px + env(safe-area-inset-bottom))}
+      #td-rescue .td-main,#td-rescue .td-side{min-width:0;width:auto}
+      #td-rescue .td-side{margin-top:18px}
+      #td-rescue .td-card{padding:18px 16px}
+      #td-rescue .td-panel{padding:16px 16px 6px}
+      #td-rescue .td-face{width:40px;height:40px}
+      #td-rescue .td-compose{display:block}
+      #td-rescue .td-compose textarea,#td-rescue .td-edit{width:100%;font-size:16px}
+      #td-rescue .td-compose textarea{min-height:72px}
+      #td-rescue .td-send{width:100%;margin-top:10px;padding:13px 18px;font-size:15px}
+      #td-rescue .td-sm2{width:auto;margin-top:0}
+      #td-rescue .td-editrow{flex-wrap:wrap}
+    }
   `;
 
   const PILL = {
@@ -521,7 +619,7 @@
       h("button", { class: "td-act td-spacer", title: "Bookmark", disabled: "" },
         icon("bookmark", !!post.bookmarkedByMe)),
       h("button", { class: "td-act", title: "Copy link" }, icon("share")));
-    acts.lastChild.onclick = () => navigator.clipboard?.writeText(location.href);
+    acts.lastChild.onclick = copyLink;
 
     if (isMine(post))
       acts.append(
