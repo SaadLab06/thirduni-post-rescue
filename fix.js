@@ -107,6 +107,28 @@
     return n;
   };
 
+  // Turn bare URLs in a body into real links. Returns a mix of strings and anchors,
+  // so the text still goes in as text nodes and is never parsed as markup.
+  const URL_RE = /(https?:\/\/|www\.)[^\s<>()[\]]+[^\s<>()[\].,;:!?'"]/gi;
+  const linkify = (text) => {
+    const out = [];
+    let last = 0;
+    for (const m of String(text).matchAll(URL_RE)) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const href = /^www\./i.test(m[0]) ? "https://" + m[0] : m[0];
+      out.push(h("a", {
+        class: "td-link",
+        href,
+        target: "_blank",
+        rel: "noreferrer noopener",
+        text: m[0],
+      }));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  };
+
   const NS = "http://www.w3.org/2000/svg";
   const ICON = {
     comment: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
@@ -245,11 +267,8 @@
         h("div", { class: "td-name", style: "font-size:14px" },
           who(r.author),
           h("span", { class: "td-meta", style: "font-weight:400", text: " · " + rel(r.createdAt) })),
-        h("div", {
-          class: "td-body",
-          style: "font-size:14.5px;margin-top:2px",
-          text: body(r.body ?? r.content ?? r.text ?? ""),
-        }),
+        h("div", { class: "td-body", style: "font-size:14.5px;margin-top:2px" },
+          linkify(body(r.body ?? r.content ?? r.text ?? ""))),
         mediaBlock(r.media || r.attachments),
         h("div", { class: "td-racts" },
           makeLike(
@@ -303,6 +322,8 @@
     #td-rescue .td-meta{font-size:13px;color:#6b7280}
     #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere;
       white-space:pre-wrap}
+    #td-rescue .td-link{color:#2563eb;text-decoration:none;overflow-wrap:anywhere}
+    #td-rescue .td-link:hover{text-decoration:underline}
     #td-rescue .td-media{display:grid;grid-template-columns:1fr;gap:10px;margin-top:14px}
     #td-rescue .td-media[data-n="2"]{grid-template-columns:1fr 1fr}
     #td-rescue .td-media[data-n="3"]{grid-template-columns:repeat(3,1fr)}
@@ -484,7 +505,7 @@
             class: "td-meta",
             text: cap(post.author?.role) + " · " + rel(post.createdAt),
           }))),
-      h("div", { class: "td-body", text: body(post.body) }),
+      h("div", { class: "td-body" }, linkify(body(post.body))),
       mediaBlock(post.media || post.attachments),
       h("hr", { class: "td-rule" }),
       acts,
