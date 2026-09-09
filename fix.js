@@ -211,7 +211,10 @@
 
   const mediaBlock = (list) => {
     const items = (Array.isArray(list) ? list : []).map(mediaItem).filter(Boolean);
-    return items.length ? h("div", { class: "td-media" }, items) : null;
+    if (!items.length) return null;
+    // they lay attachments out side by side, so mirror that: 1 wide, 3 across, else pairs
+    const n = items.length === 1 ? "1" : items.length === 3 ? "3" : "2";
+    return h("div", { class: "td-media", "data-n": n }, items);
   };
 
   const chip = (p) =>
@@ -300,12 +303,18 @@
     #td-rescue .td-meta{font-size:13px;color:#6b7280}
     #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere;
       white-space:pre-wrap}
-    #td-rescue .td-media{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-    #td-rescue .td-media a{display:block}
-    #td-rescue .td-mi,#td-rescue .td-mv{max-width:100%;height:auto;display:block;
-      border-radius:12px;border:1px solid #eaecef}
-    #td-rescue .td-mv{background:#000}
+    #td-rescue .td-media{display:grid;grid-template-columns:1fr;gap:10px;margin-top:14px}
+    #td-rescue .td-media[data-n="2"]{grid-template-columns:1fr 1fr}
+    #td-rescue .td-media[data-n="3"]{grid-template-columns:repeat(3,1fr)}
+    #td-rescue .td-media a{display:block;min-width:0}
+    #td-rescue .td-mi,#td-rescue .td-mv{width:100%;display:block;border-radius:12px;
+      border:1px solid #eaecef;background:#fafbfc;object-fit:contain}
+    #td-rescue .td-media[data-n="1"] .td-mi,
+    #td-rescue .td-media[data-n="1"] .td-mv{height:auto;max-height:520px}
+    #td-rescue .td-media:not([data-n="1"]) .td-mi,
+    #td-rescue .td-media:not([data-n="1"]) .td-mv{aspect-ratio:4/3}
     #td-rescue .td-ma{width:100%}
+    @media (max-width:640px){#td-rescue .td-media{grid-template-columns:1fr}}
     #td-rescue .td-mfail{display:block;font-size:13px;color:#6b7280;word-break:break-all}
     #td-rescue .td-acts{display:flex;align-items:center;gap:20px;color:#6b7280}
     #td-rescue .td-act{display:inline-flex;align-items:center;gap:7px;font-size:14px;
