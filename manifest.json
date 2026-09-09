@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Thirduni Post Rescue",
+  "version": "1.1.0",
+  "description": "Fixes the Page not found error on Thirduni community posts. Shows the post, its replies and the sidebar instead of the 404.",
+  "content_scripts": [
+    {
+      "matches": ["https://thirduni.com/course/*"],
+      "js": ["fix.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "thirduni-post-rescue@community",
+      "strict_min_version": "115.0"
+    }
+  }
+}
