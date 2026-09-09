@@ -191,6 +191,65 @@
     return btn;
   };
 
+  const isMine = (o) => !!(o?.mine ?? o?.isMine ?? o?.canEdit ?? o?.isAuthor);
+
+  // walk url/method/payload shapes until one is accepted; a miss is a 404 and no-op
+  const tryEach = async (urls, methods, payloads) => {
+    for (const u of urls)
+      for (const method of methods)
+        for (const p of payloads) if (await send(u, p, method)) return true;
+    return false;
+  };
+
+  // Edit and Delete for content the viewer owns. onEdited/onDeleted let the caller
+  // decide what to refresh, since a deleted post has nowhere to go back to.
+  const ownerControls = (bodyEl, urls, current, onEdited, onDeleted, what) => {
+    const editBtn = h("button", { class: "td-txt", text: "Edit" });
+    const delBtn = h("button", { class: "td-txt", text: "Delete" });
+
+    editBtn.onclick = () => {
+      const ta = h("textarea", { class: "td-edit" });
+      ta.value = current();
+      const save = h("button", { class: "td-send td-sm2", text: "Save" });
+      const cancel = h("button", { class: "td-txt", text: "Cancel" });
+      const note = h("span", { class: "td-note", style: "margin:0" });
+      const editor = h("div", {}, ta, h("div", { class: "td-editrow" }, save, cancel, note));
+      bodyEl.replaceWith(editor);
+      ta.focus();
+      cancel.onclick = () => editor.replaceWith(bodyEl);
+      save.onclick = async () => {
+        const val = ta.value.trim();
+        if (!val) return;
+        save.disabled = true;
+        note.textContent = "Saving...";
+        const ok = await tryEach(
+          urls,
+          ["PATCH", "PUT"],
+          [{ body: val }, { content: val }, { text: val }]
+        );
+        if (!ok) {
+          note.textContent = "Could not save.";
+          save.disabled = false;
+          return;
+        }
+        await onEdited();
+      };
+    };
+
+    delBtn.onclick = async () => {
+      if (!window.confirm("Delete this " + what + "? This cannot be undone.")) return;
+      delBtn.disabled = true;
+      if (!(await tryEach(urls, ["DELETE"], [undefined]))) {
+        delBtn.disabled = false;
+        delBtn.title = "Delete failed";
+        return;
+      }
+      await onDeleted();
+    };
+
+    return [editBtn, delBtn];
+  };
+
   const face = (a, small) => {
     const cls = "td-face" + (small ? " td-sm" : "");
     return pic(a)
@@ -260,27 +319,45 @@
         h("span", { text: t.description || t.subtitle || "" })),
       h("span", { class: "td-cnt", text: num(t) + " posts" }));
 
-  const reply = (r, postId) =>
-    h("div", { class: "td-reply" },
+  const reply = (r, postId, refresh) => {
+    const raw = () => body(r.body ?? r.content ?? r.text ?? "");
+    const bodyEl = h("div", { class: "td-body", style: "font-size:14.5px;margin-top:2px" },
+      linkify(raw()));
+
+    const acts = h("div", { class: "td-racts" },
+      makeLike(
+        [
+          API + "/replies/" + r.id + "/like",
+          API + "/posts/" + postId + "/replies/" + r.id + "/like",
+          API + "/replies/" + r.id + "/likes",
+        ],
+        r.likedByMe,
+        r._count?.likes ?? r.likes ?? 0,
+        15
+      ));
+
+    if (isMine(r))
+      acts.append(
+        ...ownerControls(
+          bodyEl,
+          [API + "/posts/" + postId + "/replies/" + r.id, API + "/replies/" + r.id],
+          raw,
+          refresh,
+          refresh,
+          "reply"
+        )
+      );
+
+    return h("div", { class: "td-reply" },
       face(r.author, true),
       h("div", { style: "flex:1 1 auto;min-width:0" },
         h("div", { class: "td-name", style: "font-size:14px" },
           who(r.author),
           h("span", { class: "td-meta", style: "font-weight:400", text: " · " + rel(r.createdAt) })),
-        h("div", { class: "td-body", style: "font-size:14.5px;margin-top:2px" },
-          linkify(body(r.body ?? r.content ?? r.text ?? ""))),
+        bodyEl,
         mediaBlock(r.media || r.attachments),
-        h("div", { class: "td-racts" },
-          makeLike(
-            [
-              API + "/replies/" + r.id + "/like",
-              API + "/posts/" + postId + "/replies/" + r.id + "/like",
-              API + "/replies/" + r.id + "/likes",
-            ],
-            r.likedByMe,
-            r._count?.likes ?? r.likes ?? 0,
-            15
-          ))));
+        acts));
+  };
 
   const panel = (title, subtitle, rows) =>
     h("div", { class: "td-panel" },
@@ -347,8 +424,18 @@
     #td-rescue .td-reply{display:flex;align-items:flex-start;gap:12px;padding:18px 0;
       border-bottom:1px solid #f1f3f5}
     #td-rescue .td-reply:last-child{border-bottom:0}
-    #td-rescue .td-racts{margin-top:8px}
+    #td-rescue .td-racts{display:flex;align-items:center;gap:16px;margin-top:8px}
     #td-rescue .td-racts .td-act{font-size:13px;gap:6px;color:#9ca3af}
+    #td-rescue .td-txt{background:none;border:0;padding:0;font:inherit;font-size:13px;
+      color:#6b7280;cursor:pointer}
+    #td-rescue .td-txt:hover{color:#111827;text-decoration:underline}
+    #td-rescue .td-txt[disabled]{opacity:.5;cursor:default;text-decoration:none}
+    #td-rescue .td-edit{width:100%;border:1px solid #e5e7eb;border-radius:12px;
+      padding:11px 15px;font:inherit;font-size:14.5px;min-height:84px;resize:vertical;
+      color:#111827;outline:none;margin-top:4px}
+    #td-rescue .td-edit:focus{border-color:#c7cbd1}
+    #td-rescue .td-editrow{display:flex;align-items:center;gap:14px;margin-top:8px}
+    #td-rescue .td-sm2{padding:7px 15px;font-size:13px}
     #td-rescue .td-rep{border-top:1px solid #eef0f2;padding-top:8px;margin-top:16px}
     #td-rescue .td-compose{display:flex;align-items:flex-start;gap:12px;margin-top:18px}
     #td-rescue .td-compose textarea{flex:1 1 auto;border:1px solid #e5e7eb;border-radius:12px;
@@ -420,6 +507,7 @@
     const pill = PILL[post.postType] || ["#f3f4f6", "#4b5563"];
 
     // --- actions row ---
+    const postBody = h("div", { class: "td-body" }, linkify(body(post.body)));
     const replyCount = h("span", { text: String(replies.length || post._count?.replies || 0) });
     const likeBtn = makeLike(likeUrls(id), post.likedByMe, post._count?.likes ?? 0, 18);
 
@@ -435,6 +523,22 @@
       h("button", { class: "td-act", title: "Copy link" }, icon("share")));
     acts.lastChild.onclick = () => navigator.clipboard?.writeText(location.href);
 
+    if (isMine(post))
+      acts.append(
+        ...ownerControls(
+          postBody,
+          [API + "/posts/" + id],
+          () => body(post.body),
+          async () => {
+            kill();
+            busy = null;
+            await run();
+          },
+          () => location.assign(FEED),
+          "post"
+        )
+      );
+
     // --- composer ---
     const box = h("textarea", {
       rows: "1",
@@ -442,7 +546,14 @@
     });
     const sendBtn = h("button", { class: "td-send", text: "Reply", disabled: "" });
     const note = h("div", { class: "td-note" });
-    const repList = h("div", { class: "td-rep" }, replies.map((r) => reply(r, id)));
+    const repList = h("div", { class: "td-rep" });
+    const refresh = async () => {
+      const fresh = findList(await get(API + "/posts/" + id + "/replies"));
+      if (fresh) replies = fresh;
+      repList.replaceChildren(...replies.map((r) => reply(r, id, refresh)));
+      replyCount.textContent = String(replies.length);
+    };
+    repList.replaceChildren(...replies.map((r) => reply(r, id, refresh)));
 
     box.oninput = () => {
       sendBtn.disabled = !box.value.trim();
@@ -471,12 +582,7 @@
       box.value = "";
       box.style.height = "auto";
       note.textContent = "";
-      const fresh = findList(await get(API + "/posts/" + id + "/replies"));
-      if (fresh) {
-        replies = fresh;
-        repList.replaceChildren(...replies.map((r) => reply(r, id)));
-        replyCount.textContent = String(replies.length);
-      }
+      await refresh();
     };
 
     const style = document.createElement("style");
@@ -505,7 +611,7 @@
             class: "td-meta",
             text: cap(post.author?.role) + " · " + rel(post.createdAt),
           }))),
-      h("div", { class: "td-body" }, linkify(body(post.body))),
+      postBody,
       mediaBlock(post.media || post.attachments),
       h("hr", { class: "td-rule" }),
       acts,
