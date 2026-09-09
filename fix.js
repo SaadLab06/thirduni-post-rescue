@@ -114,11 +114,11 @@
     share: "M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v14",
   };
 
-  const icon = (name, filled) => {
+  const icon = (name, filled, size) => {
     const s = document.createElementNS(NS, "svg");
     s.setAttribute("viewBox", "0 0 24 24");
-    s.setAttribute("width", "18");
-    s.setAttribute("height", "18");
+    s.setAttribute("width", String(size || 18));
+    s.setAttribute("height", String(size || 18));
     s.setAttribute("fill", filled ? "currentColor" : "none");
     s.setAttribute("stroke", "currentColor");
     s.setAttribute("stroke-width", "1.7");
@@ -128,6 +128,43 @@
     p.setAttribute("d", ICON[name]);
     s.append(p);
     return s;
+  };
+
+  // One like button, used for both posts and replies. Their like routes were never
+  // observed, so each candidate is tried until one answers; a miss is a harmless 404.
+  const makeLike = (urls, liked0, count0, size) => {
+    let liked = !!liked0;
+    let count = Number(count0) || 0;
+    const label = h("span", {});
+    const btn = h("button", { class: "td-act", title: "Like" });
+    const paint = () => {
+      btn.replaceChildren(icon("heart", liked, size), label);
+      btn.className = "td-act" + (liked ? " on" : "");
+      label.textContent = String(count);
+    };
+    paint();
+    btn.onclick = async () => {
+      const was = { liked, count };
+      liked = !liked;
+      count += liked ? 1 : -1;
+      paint();
+      btn.disabled = true;
+      let ok = null;
+      for (const u of urls) {
+        ok = await send(u, was.liked ? undefined : {}, was.liked ? "DELETE" : "POST");
+        if (ok) break;
+        ok = await send(u, {}, "POST"); // some APIs toggle on POST
+        if (ok) break;
+      }
+      btn.disabled = false;
+      if (!ok) {
+        liked = was.liked;
+        count = was.count;
+        paint();
+        btn.title = "Like failed: this build could not find the like endpoint";
+      }
+    };
+    return btn;
   };
 
   const face = (a, small) => {
@@ -158,7 +195,7 @@
         h("span", { text: t.description || t.subtitle || "" })),
       h("span", { class: "td-cnt", text: num(t) + " posts" }));
 
-  const reply = (r) =>
+  const reply = (r, postId) =>
     h("div", { class: "td-reply" },
       face(r.author, true),
       h("div", { style: "flex:1 1 auto;min-width:0" },
@@ -169,7 +206,18 @@
           class: "td-body",
           style: "font-size:14.5px;margin-top:2px",
           text: flow(r.body ?? r.content ?? r.text ?? ""),
-        })));
+        }),
+        h("div", { class: "td-racts" },
+          makeLike(
+            [
+              API + "/replies/" + r.id + "/like",
+              API + "/posts/" + postId + "/replies/" + r.id + "/like",
+              API + "/replies/" + r.id + "/likes",
+            ],
+            r.likedByMe,
+            r._count?.likes ?? r.likes ?? 0,
+            15
+          ))));
 
   const panel = (title, subtitle, rows) =>
     h("div", { class: "td-panel" },
@@ -217,7 +265,11 @@
     #td-rescue .td-act.on{color:#111827}
     #td-rescue .td-act[disabled]{cursor:default;opacity:.55}
     #td-rescue .td-spacer{margin-left:auto}
-    #td-rescue .td-reply{display:flex;align-items:flex-start;gap:12px;margin:18px 0}
+    #td-rescue .td-reply{display:flex;align-items:flex-start;gap:12px;padding:18px 0;
+      border-bottom:1px solid #f1f3f5}
+    #td-rescue .td-reply:last-child{border-bottom:0}
+    #td-rescue .td-racts{margin-top:8px}
+    #td-rescue .td-racts .td-act{font-size:13px;gap:6px;color:#9ca3af}
     #td-rescue .td-rep{border-top:1px solid #eef0f2;padding-top:8px;margin-top:16px}
     #td-rescue .td-compose{display:flex;align-items:flex-start;gap:12px;margin-top:18px}
     #td-rescue .td-compose textarea{flex:1 1 auto;border:1px solid #e5e7eb;border-radius:12px;
@@ -289,40 +341,8 @@
     const pill = PILL[post.postType] || ["#f3f4f6", "#4b5563"];
 
     // --- actions row ---
-    let liked = !!post.likedByMe;
-    let likes = post._count?.likes ?? 0;
-
     const replyCount = h("span", { text: String(replies.length || post._count?.replies || 0) });
-    const likeCount = h("span", { text: String(likes) });
-    const likeBtn = h("button", { class: "td-act" + (liked ? " on" : ""), title: "Like" });
-    const repaintLike = () => {
-      likeBtn.replaceChildren(icon("heart", liked), likeCount);
-      likeBtn.className = "td-act" + (liked ? " on" : "");
-      likeCount.textContent = String(likes);
-    };
-    repaintLike();
-
-    likeBtn.onclick = async () => {
-      const before = { liked, likes };
-      liked = !liked;
-      likes += liked ? 1 : -1;
-      repaintLike();
-      likeBtn.disabled = true;
-      let ok = null;
-      for (const u of likeUrls(id)) {
-        ok = await send(u, before.liked ? undefined : {}, before.liked ? "DELETE" : "POST");
-        if (ok) break;
-        ok = await send(u, {}, "POST"); // some APIs toggle on POST
-        if (ok) break;
-      }
-      likeBtn.disabled = false;
-      if (!ok) {
-        liked = before.liked;
-        likes = before.likes;
-        repaintLike();
-        likeBtn.title = "Like failed: this build could not find the like endpoint";
-      }
-    };
+    const likeBtn = makeLike(likeUrls(id), post.likedByMe, post._count?.likes ?? 0, 18);
 
     const commentBtn = h("button", { class: "td-act", title: "Replies" },
       icon("comment"), replyCount);
@@ -343,7 +363,7 @@
     });
     const sendBtn = h("button", { class: "td-send", text: "Reply", disabled: "" });
     const note = h("div", { class: "td-note" });
-    const repList = h("div", { class: "td-rep" }, replies.map(reply));
+    const repList = h("div", { class: "td-rep" }, replies.map((r) => reply(r, id)));
 
     box.oninput = () => {
       sendBtn.disabled = !box.value.trim();
@@ -375,7 +395,7 @@
       const fresh = findList(await get(API + "/posts/" + id + "/replies"));
       if (fresh) {
         replies = fresh;
-        repList.replaceChildren(...replies.map(reply));
+        repList.replaceChildren(...replies.map((r) => reply(r, id)));
         replyCount.textContent = String(replies.length);
       }
     };
