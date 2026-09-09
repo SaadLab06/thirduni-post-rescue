@@ -77,7 +77,8 @@
   };
 
   const cap = (s) => String(s || "").toLowerCase().replace(/^./, (c) => c.toUpperCase());
-  const flow = (t) => String(t ?? "").replace(/\s*\n+\s*/g, " ").trim();
+  // keep the author's own line breaks and blank lines; .td-body is white-space:pre-wrap
+  const body = (t) => String(t ?? "").replace(/\r\n/g, "\n").trim();
 
   const who = (a) => a?.displayName || a?.profile?.name || a?.name || a?.handle || "Unknown";
   const pic = (a) => a?.profile?.avatarUrl || a?.avatarUrl || "";
@@ -205,7 +206,7 @@
         h("div", {
           class: "td-body",
           style: "font-size:14.5px;margin-top:2px",
-          text: flow(r.body ?? r.content ?? r.text ?? ""),
+          text: body(r.body ?? r.content ?? r.text ?? ""),
         }),
         h("div", { class: "td-racts" },
           makeLike(
@@ -257,7 +258,8 @@
     #td-rescue .td-sm{width:34px;height:34px;font-size:11px}
     #td-rescue .td-name{font-weight:700;font-size:15px}
     #td-rescue .td-meta{font-size:13px;color:#6b7280}
-    #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere}
+    #td-rescue .td-body{font-size:15px;line-height:1.75;color:#374151;overflow-wrap:anywhere;
+      white-space:pre-wrap}
     #td-rescue .td-acts{display:flex;align-items:center;gap:20px;color:#6b7280}
     #td-rescue .td-act{display:inline-flex;align-items:center;gap:7px;font-size:14px;
       background:none;border:0;padding:0;color:inherit;font-family:inherit;cursor:pointer}
@@ -426,7 +428,7 @@
             class: "td-meta",
             text: cap(post.author?.role) + " · " + rel(post.createdAt),
           }))),
-      h("div", { class: "td-body", text: flow(post.body) }),
+      h("div", { class: "td-body", text: body(post.body) }),
       h("hr", { class: "td-rule" }),
       acts,
       h("div", { class: "td-compose" }, box, sendBtn),
