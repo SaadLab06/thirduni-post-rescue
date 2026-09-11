@@ -34,6 +34,21 @@ Firefox drops temporary add-ons when you close the browser, so you have to repea
 steps 2 to 5 each time you restart. That is a Firefox rule for unsigned add-ons,
 not a bug here. Chrome does not have that limitation.
 
+## Install on Safari, iPhone and iPad
+
+Safari will not load a folder the way Chrome does; the extension has to be wrapped in
+an app built with Xcode. Everything needed for that is in [`safari/`](safari/), and it
+runs the same `fix.js` as every other browser:
+
+```bash
+./safari/build.sh
+```
+
+Then open the generated project in Xcode, run it on your iPhone, and turn the extension
+on in Settings → Safari → Extensions. Full steps, including the Mac build, are in
+[safari/README.md](safari/README.md); what the port changed is in
+[SPEC_SAFARI_IOS.md](SPEC_SAFARI_IOS.md).
+
 ## What it can access
 
 Only `thirduni.com`. It reads the page to notice the 404 and calls the same API
